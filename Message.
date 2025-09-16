@@ -1,0 +1,493 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog, filedialog
+from PIL import Image, ImageTk
+import os
+import json
+import time
+from datetime import datetime
+
+class VKMessenger:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("VK Мессенджер")
+        self.root.geometry("1200x800")
+        self.root.configure(bg='#EDEDED')
+        self.root.minsize(1000, 600)
+        
+        # Данные пользователя
+        self.current_user = {
+            'name': 'Иван Иванов',
+            'status': 'online',
+            'avatar': None,
+            'friends': ['Мария Петрова', 'Алексей Смирнов', 'Екатерина Иванова', 'Дмитрий Козлов'],
+            'conversations': [
+                {'name': 'Мария Петрова', 'last_message': 'Привет! Как дела?', 'time': '12:30', 'unread': 3},
+                {'name': 'Алексей Смирнов', 'last_message': 'Го сегодня вечером?', 'time': '11:45', 'unread': 0},
+                {'name': 'Екатерина Иванова', 'last_message': 'Отправь мне файлы', 'time': '10:20', 'unread': 1},
+                {'name': 'Дмитрий Козлов', 'last_message': 'Скинь фото с вечеринки', 'time': '09:15', 'unread': 0}
+            ]
+        }
+        
+        self.dark_mode = False
+        self.current_chat = None
+        self.messages = {
+            'Мария Петрова': [
+                {'text': 'Привет! Как дела?', 'sender': 'other', 'time': '12:30'},
+                {'text': 'Привет! Все отлично, работаю над проектом', 'sender': 'me', 'time': '12:31'},
+                {'text': 'Круто! А что за проект?', 'sender': 'other', 'time': '12:32'}
+            ],
+            'Алексей Смирнов': [
+                {'text': 'Го сегодня вечером?', 'sender': 'other', 'time': '11:45'},
+                {'text': 'Во сколько и где?', 'sender': 'me', 'time': '11:46'}
+            ],
+            'Екатерина Иванова': [
+                {'text': 'Отправь мне файлы по проекту', 'sender': 'other', 'time': '10:20'},
+                {'text': 'Уже отправил на почту', 'sender': 'me', 'time': '10:22'}
+            ],
+            'Дмитрий Козлов': [
+                {'text': 'Скинь фото с вчерашней вечеринки', 'sender': 'other', 'time': '09:15'},
+                {'text': 'Вечером скину, сейчас на работе', 'sender': 'me', 'time': '09:16'}
+            ]
+        }
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        # Главный контейнер
+        self.main_container = tk.Frame(self.root, bg='#EDEDED')
+        self.main_container.pack(fill='both', expand=True)
+        
+        # Верхняя панель (как в VK)
+        self.create_header()
+        
+        # Основной контент
+        self.content_frame = tk.Frame(self.main_container, bg='#EDEDED')
+        self.content_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        
+        # Боковая панель с чатами
+        self.sidebar_frame = tk.Frame(self.content_frame, bg='#FFFFFF', width=300)
+        self.sidebar_frame.pack(side='left', fill='y', padx=(0, 10))
+        self.sidebar_frame.pack_propagate(False)
+        
+        # Поиск
+        self.create_search()
+        
+        # Список чатов
+        self.create_chats_list()
+        
+        # Область чата
+        self.chat_frame = tk.Frame(self.content_frame, bg='#FFFFFF')
+        self.chat_frame.pack(side='right', fill='both', expand=True)
+        
+        # Заголовок чата
+        self.chat_header = tk.Frame(self.chat_frame, bg='#FFFFFF', height=60)
+        self.chat_header.pack(fill='x')
+        self.chat_header.pack_propagate(False)
+        
+        # Область сообщений
+        self.messages_frame = tk.Frame(self.chat_frame, bg='#E5E5E5')
+        self.messages_frame.pack(fill='both', expand=True)
+        
+        # Поле ввода
+        self.create_input_area()
+        
+        # Показываем начальный экран
+        self.show_welcome_screen()
+        
+    def create_header(self):
+        header = tk.Frame(self.main_container, bg='#4680C2', height=50)
+        header.pack(fill='x')
+        header.pack_propagate(False)
+        
+        # Логотип VK
+        logo_frame = tk.Frame(header, bg='#4680C2')
+        logo_frame.pack(side='left', padx=20)
+        
+        tk.Label(logo_frame, text="VK", font=("Arial", 20, "bold"), 
+                bg='#4680C2', fg='white').pack(side='left')
+        
+        # Кнопки навигации
+        nav_frame = tk.Frame(header, bg='#4680C2')
+        nav_frame.pack(side='left', padx=30)
+        
+        nav_items = [
+            ("Моя Страница", self.show_profile),
+            ("Друзья", self.show_friends),
+            ("Сообщения", self.show_messages),
+            ("Фотографии", self.show_photos)
+        ]
+        
+        for text, command in nav_items:
+            btn = tk.Button(nav_frame, text=text, font=("Arial", 10),
+                          bg='#4680C2', fg='white', relief='flat',
+                          command=command)
+            btn.pack(side='left', padx=10)
+            btn.bind("<Enter>", lambda e, b=btn: b.config(bg='#5A8DC8'))
+            btn.bind("<Leave>", lambda e, b=btn: b.config(bg='#4680C2'))
+        
+        # Правая часть с аватаром
+        right_frame = tk.Frame(header, bg='#4680C2')
+        right_frame.pack(side='right', padx=20)
+        
+        tk.Button(right_frame, text="🔔", font=("Arial", 14),
+                 bg='#4680C2', fg='white', relief='flat',
+                 command=self.show_notifications).pack(side='left', padx=5)
+        
+        tk.Button(right_frame, text="⚙️", font=("Arial", 14),
+                 bg='#4680C2', fg='white', relief='flat',
+                 command=self.open_settings).pack(side='left', padx=5)
+        
+        self.avatar_btn = tk.Button(right_frame, text="👤", font=("Arial", 14),
+                                   bg='#4680C2', fg='white', relief='flat',
+                                   command=self.show_profile_menu)
+        self.avatar_btn.pack(side='left', padx=5)
+        
+    def create_search(self):
+        search_frame = tk.Frame(self.sidebar_frame, bg='#F5F5F5', height=50)
+        search_frame.pack(fill='x', pady=(0, 10))
+        search_frame.pack_propagate(False)
+        
+        search_entry = tk.Entry(search_frame, font=("Arial", 11),
+                              bg='#FFFFFF', relief='flat', bd=1)
+        search_entry.pack(fill='both', expand=True, padx=10, pady=10)
+        search_entry.insert(0, "Поиск сообщений")
+        search_entry.bind("<FocusIn>", lambda e: search_entry.delete(0, 'end') if search_entry.get() == "Поиск сообщений" else None)
+        search_entry.bind("<FocusOut>", lambda e: search_entry.insert(0, "Поиск сообщений") if not search_entry.get() else None)
+        
+    def create_chats_list(self):
+        # Заголовок
+        tk.Label(self.sidebar_frame, text="Сообщения", font=("Arial", 16, "bold"),
+                bg='#FFFFFF', fg='#000000').pack(anchor='w', padx=20, pady=(20, 10))
+        
+        # Список чатов
+        chats_container = tk.Frame(self.sidebar_frame, bg='#FFFFFF')
+        chats_container.pack(fill='both', expand=True)
+        
+        canvas = tk.Canvas(chats_container, bg='#FFFFFF', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(chats_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='#FFFFFF')
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Добавляем чаты
+        for i, chat in enumerate(self.current_user['conversations']):
+            self.create_chat_item(scrollable_frame, chat, i)
+    
+    def create_chat_item(self, parent, chat, index):
+        chat_frame = tk.Frame(parent, bg='#FFFFFF', cursor="hand2")
+        chat_frame.pack(fill='x', pady=2)
+        
+        # Аватар
+        avatar_frame = tk.Frame(chat_frame, bg='#FFFFFF')
+        avatar_frame.pack(side='left', padx=15, pady=10)
+        
+        tk.Label(avatar_frame, text="👤", font=("Arial", 16),
+                bg='#FFFFFF').pack()
+        
+        # Информация о чате
+        info_frame = tk.Frame(chat_frame, bg='#FFFFFF')
+        info_frame.pack(side='left', fill='x', expand=True, padx=(0, 15))
+        
+        # Первая строка: имя и время
+        top_frame = tk.Frame(info_frame, bg='#FFFFFF')
+        top_frame.pack(fill='x')
+        
+        tk.Label(top_frame, text=chat['name'], font=("Arial", 12, "bold"),
+                bg='#FFFFFF', fg='#000000').pack(side='left')
+        
+        tk.Label(top_frame, text=chat['time'], font=("Arial", 10),
+                bg='#FFFFFF', fg='#666666').pack(side='right')
+        
+        # Вторая строка: сообщение и счетчик непрочитанных
+        bottom_frame = tk.Frame(info_frame, bg='#FFFFFF')
+        bottom_frame.pack(fill='x')
+        
+        message_text = chat['last_message'][:30] + "..." if len(chat['last_message']) > 30 else chat['last_message']
+        tk.Label(bottom_frame, text=message_text, font=("Arial", 10),
+                bg='#FFFFFF', fg='#666666').pack(side='left')
+        
+        if chat['unread'] > 0:
+            unread_frame = tk.Frame(bottom_frame, bg='#FF3347', width=20, height=20)
+            unread_frame.pack(side='right')
+            unread_frame.pack_propagate(False)
+            tk.Label(unread_frame, text=str(chat['unread']), font=("Arial", 9, "bold"),
+                    bg='#FF3347', fg='white').pack(expand=True)
+        
+        # Биндим клик
+        chat_frame.bind("<Button-1>", lambda e, c=chat: self.open_chat(c))
+        for child in chat_frame.winfo_children():
+            child.bind("<Button-1>", lambda e, c=chat: self.open_chat(c))
+    
+    def create_input_area(self):
+        input_frame = tk.Frame(self.chat_frame, bg='#FFFFFF', height=60)
+        input_frame.pack(fill='x', side='bottom')
+        input_frame.pack_propagate(False)
+        
+        # Кнопки действий
+        actions_frame = tk.Frame(input_frame, bg='#FFFFFF')
+        actions_frame.pack(side='left', padx=10)
+        
+        actions = ["📎", "😊", "🎤", "📷"]
+        for action in actions:
+            btn = tk.Button(actions_frame, text=action, font=("Arial", 14),
+                          bg='#FFFFFF', fg='#666666', relief='flat',
+                          command=lambda a=action: self.handle_action(a))
+            btn.pack(side='left', padx=2)
+        
+        # Поле ввода
+        self.message_entry = tk.Entry(input_frame, font=("Arial", 12),
+                                     bg='#F5F5F5', relief='flat')
+        self.message_entry.pack(side='left', fill='x', expand=True, padx=10, pady=10)
+        self.message_entry.bind('<Return>', self.send_message)
+        
+        # Кнопка отправки
+        send_btn = tk.Button(input_frame, text="➤", font=("Arial", 14),
+                            command=self.send_message, bg='#4680C2', fg='white',
+                            relief='flat', width=3)
+        send_btn.pack(side='right', padx=10, pady=10)
+    
+    def show_welcome_screen(self):
+        # Очищаем область чата
+        for widget in self.messages_frame.winfo_children():
+            widget.destroy()
+        
+        welcome_frame = tk.Frame(self.messages_frame, bg='#E5E5E5')
+        welcome_frame.pack(fill='both', expand=True)
+        
+        tk.Label(welcome_frame, text="💬", font=("Arial", 48),
+                bg='#E5E5E5', fg='#666666').pack(pady=(100, 20))
+        
+        tk.Label(welcome_frame, text="Выберите чат для начала общения",
+                font=("Arial", 16), bg='#E5E5E5', fg='#666666').pack()
+        
+        # Очищаем заголовок чата
+        for widget in self.chat_header.winfo_children():
+            widget.destroy()
+        
+        tk.Label(self.chat_header, text="Сообщения", font=("Arial", 16, "bold"),
+                bg='#FFFFFF', fg='#000000').pack(pady=15)
+    
+    def open_chat(self, chat):
+        self.current_chat = chat['name']
+        
+        # Обновляем заголовок чата
+        for widget in self.chat_header.winfo_children():
+            widget.destroy()
+        
+        header_frame = tk.Frame(self.chat_header, bg='#FFFFFF')
+        header_frame.pack(fill='both', expand=True)
+        
+        # Аватар и имя
+        left_frame = tk.Frame(header_frame, bg='#FFFFFF')
+        left_frame.pack(side='left', padx=20)
+        
+        tk.Label(left_frame, text="👤", font=("Arial", 16),
+                bg='#FFFFFF').pack(side='left')
+        
+        tk.Label(left_frame, text=chat['name'], font=("Arial", 14, "bold"),
+                bg='#FFFFFF', fg='#000000').pack(side='left', padx=10)
+        
+        # Кнопки действий
+        right_frame = tk.Frame(header_frame, bg='#FFFFFF')
+        right_frame.pack(side='right', padx=20)
+        
+        action_buttons = ["📞", "📹", "ℹ️"]
+        for btn_text in action_buttons:
+            btn = tk.Button(right_frame, text=btn_text, font=("Arial", 14),
+                          bg='#FFFFFF', fg='#666666', relief='flat')
+            btn.pack(side='left', padx=5)
+        
+        # Очищаем и заполняем сообщения
+        for widget in self.messages_frame.winfo_children():
+            widget.destroy()
+        
+        self.show_messages(self.current_chat)
+    
+    def show_messages(self, chat_name):
+        canvas = tk.Canvas(self.messages_frame, bg='#E5E5E5', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.messages_frame, orient="vertical", command=canvas.yview)
+        messages_container = tk.Frame(canvas, bg='#E5E5E5')
+        
+        messages_container.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=messages_container, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Добавляем сообщения
+        for msg in self.messages.get(chat_name, []):
+            self.add_message_to_chat(messages_container, msg)
+    
+    def add_message_to_chat(self, parent, message):
+        message_frame = tk.Frame(parent, bg='#E5E5E5')
+        message_frame.pack(fill='x', pady=2)
+        
+        if message['sender'] == 'me':
+            bg_color = '#CCE4FF'
+            align = 'right'
+            margin = (50, 10)
+        else:
+            bg_color = '#FFFFFF'
+            align = 'left'
+            margin = (10, 50)
+        
+        msg_container = tk.Frame(message_frame, bg='#E5E5E5')
+        msg_container.pack(side=align, padx=margin)
+        
+        msg_bubble = tk.Frame(msg_container, bg=bg_color, relief='raised', bd=1)
+        msg_bubble.pack()
+        
+        tk.Label(msg_bubble, text=message['text'], font=("Arial", 11),
+                bg=bg_color, fg='#000000', wraplength=300,
+                justify='left').pack(padx=10, pady=5)
+        
+        time_label = tk.Label(msg_bubble, text=message['time'], font=("Arial", 8),
+                             bg=bg_color, fg='#666666')
+        time_label.pack(anchor='se', padx=5, pady=2)
+    
+    def send_message(self, event=None):
+        if not self.current_chat:
+            messagebox.showinfo("Внимание", "Выберите чат для отправки сообщения")
+            return
+        
+        message_text = self.message_entry.get().strip()
+        if message_text:
+            current_time = datetime.now().strftime("%H:%M")
+            
+            # Добавляем сообщение
+            new_message = {
+                'text': message_text,
+                'sender': 'me',
+                'time': current_time
+            }
+            
+            self.messages[self.current_chat].append(new_message)
+            self.message_entry.delete(0, tk.END)
+            
+            # Обновляем чат
+            for widget in self.messages_frame.winfo_children():
+                widget.destroy()
+            
+            self.show_messages(self.current_chat)
+            
+            # Автоответ
+            self.root.after(2000, self.send_auto_reply)
+    
+    def send_auto_reply(self):
+        if self.current_chat:
+            replies = {
+                'Мария Петрова': 'Круто! Расскажи подробнее!',
+                'Алексей Смирнов': 'Я тоже! Жду не дождусь!',
+                'Екатерина Иванова': 'Спасибо! Получил!',
+                'Дмитрий Козлов': 'Понял, жду!'
+            }
+            
+            reply_text = replies.get(self.current_chat, 'Интересно!')
+            current_time = datetime.now().strftime("%H:%M")
+            
+            reply_message = {
+                'text': reply_text,
+                'sender': 'other',
+                'time': current_time
+            }
+            
+            self.messages[self.current_chat].append(reply_message)
+            
+            for widget in self.messages_frame.winfo_children():
+                widget.destroy()
+            
+            self.show_messages(self.current_chat)
+    
+    def handle_action(self, action):
+        if action == "📎":
+            self.attach_file()
+        elif action == "😊":
+            self.show_emoji_menu()
+        elif action == "🎤":
+            self.voice_message()
+        elif action == "📷":
+            self.take_photo()
+    
+    def attach_file(self):
+        file_path = filedialog.askopenfilename(
+            title="Выберите файл",
+            filetypes=[("Все файлы", "*.*"), ("Изображения", "*.jpg *.jpeg *.png *.gif"),
+                      ("Документы", "*.pdf *.doc *.docx *.txt")]
+        )
+        if file_path:
+            messagebox.showinfo("Файл", f"Выбран файл: {os.path.basename(file_path)}")
+    
+    def show_emoji_menu(self):
+        # Заглушка для меню эмодзи
+        messagebox.showinfo("Эмодзи", "Меню эмодзи будет реализовано позже")
+    
+    def voice_message(self):
+        messagebox.showinfo("Голосовое сообщение", "Запись голосового сообщения...")
+    
+    def take_photo(self):
+        messagebox.showinfo("Фото", "Открытие камеры...")
+    
+    def show_profile(self):
+        messagebox.showinfo("Моя Страница", "Переход на мою страницу")
+    
+    def show_friends(self):
+        messagebox.showinfo("Друзья", "Список друзей")
+    
+    def show_messages(self):
+        # Уже в сообщениях
+        pass
+    
+    def show_photos(self):
+        messagebox.showinfo("Фотографии", "Мои фотографии")
+    
+    def show_notifications(self):
+        messagebox.showinfo("Уведомления", "Новых уведомлений нет")
+    
+    def open_settings(self):
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Настройки VK")
+        settings_window.geometry("400x500")
+        settings_window.configure(bg='#FFFFFF')
+        
+        notebook = ttk.Notebook(settings_window)
+        notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Основные настройки
+        general_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(general_frame, text="Основные")
+        
+        ttk.Label(general_frame, text="Настройки профиля", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+        
+        fields = [
+            ("Имя:", "name"),
+            ("Статус:", "status")
+        ]
+        
+        for i, (label, key) in enumerate(fields, 1):
+            ttk.Label(general_frame, text=label).grid(row=i, column=0, sticky='w', pady=5)
+            entry = ttk.Entry(general_frame, width=30)
+            entry.grid(row=i, column=1, pady=5, padx=10)
+            entry.insert(0, self.current_user[key])
+        
+        ttk.Button(general_frame, text="Сменить аватар", 
+                  command=self.change_avatar).grid(row=3, column=0, columnspan=2, pady=10)
+        
+        # Настройки внешнего вида
+        appearance_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(appearance_frame, text="Внешний вид")
+        
+        ttk.Label(appearance_frame, text="Тема оформления", font=("Arial", 14, "bold")).gr
